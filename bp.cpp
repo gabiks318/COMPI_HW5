@@ -2,6 +2,7 @@
 #include <vector>
 #include <iostream>
 #include <sstream>
+
 using namespace std;
 
 bool replace(string& str, const string& from, const string& to, const BranchLabelIndex index);
@@ -18,14 +19,18 @@ string CodeBuffer::genLabel(){
 	label << "label_";
 	label << buffer.size();
 	std::string ret(label.str());
-	label << ":";
-	emit(label.str());
+//	label << ":";
+//	emit(label.str());
 	return ret;
 }
 
 int CodeBuffer::emit(const string &s){
     buffer.push_back(s);
 	return buffer.size() - 1;
+}
+
+int CodeBuffer::emit_init(){
+    code_gen.generate_global_code();
 }
 
 void CodeBuffer::bpatch(const vector<pair<int,BranchLabelIndex>>& address_list, const std::string &label){

@@ -1,10 +1,13 @@
 #include "types.h"
 #include "symbol_table.h"
+#include "generator.h"
 #include "hw3_output.hpp"
 
 #define TRUE "true"
 #define FALSE "false"
 extern TableStack tables;
+extern Generator code_gen;
+extern CodeBuffer buffer;
 extern int yylineno;
 
 static bool check_types_compatible(string type1, string type2) {
@@ -25,15 +28,12 @@ FormalDecl::FormalDecl(FormalDecl *formal) : Node(formal->value), type(formal->t
 FormalDecl::FormalDecl(Type *type, Node *node) : Node(*node), type(type->type) {
     if (DEBUG)
         std::cout << "FormalDecl " << this->type << " " << this->value << std::endl;
-//    delete[] node;
-//    delete[] type;
 }
 
 FormalsList::FormalsList(Node *node) : Node(), formals_list() {
     if (DEBUG)
         std::cout << "FormalsList " << std::endl;
     formals_list.insert(formals_list.begin(), new FormalDecl(dynamic_cast<FormalDecl *>(node)));
-//    delete[] node;
 }
 
 FormalsList::FormalsList(Node *node, FormalsList *formals_list) : Node(), formals_list() {
@@ -110,9 +110,6 @@ Statement::Statement(Node *node) {
             exit(0);
         }
     }
-
-//    delete[] node;
-
 }
 
 Statement::Statement(Exp *exp, bool is_return) : Node() {
@@ -135,6 +132,17 @@ Statement::Statement(Exp *exp, bool is_return) : Node() {
             exit(0);
         }
     }
+    Symbol *symbol = tables.get_symbol(exp->value);
+    string rbp = tables.current_scope()->rbp;
+    string reg;
+    if(symbol){
+        reg = code_gen.generate_load_var(rbp, symbol->offset);
+
+    } else {
+        reg = "";
+    }
+    code_gen.return_code(*return_type, reg);
+
 }
 
 // Statement -> Type ID SC
@@ -146,8 +154,18 @@ Statement::Statement(Type *type, Node *id) : Node() {
         exit(0);
     }
     tables.add_symbol(id->value, type->type, false);
-    value = type->value;//
-
+    value = type->value;
+    Exp* temp = new Exp();
+    temp->reg = code_gen.allocate_register();
+    temp->type = value;
+    if(value == "bool"){
+        temp->value = "false";
+        code_gen.ruleBool(temp);
+    } else {
+        temp->value = "0";
+        code_gen.ruleNum(0);
+    }
+    delete temp;
 }
 
 // Statement -> Type ID ASSIGN Exp SC or Statement -> AUTO ID ASSIGN Exp SC
@@ -159,6 +177,7 @@ Statement::Statement(Type *type, Node *id, Exp *exp) : Node() {
         output::errorDef(yylineno, id->value);
         exit(0);
     }
+    string var_type;
     if (type) {
         if (!check_types_compatible(type->type, exp->type)) {
             output::errorMismatch(yylineno);
@@ -168,21 +187,19 @@ Statement::Statement(Type *type, Node *id, Exp *exp) : Node() {
             output::errorMismatch(yylineno);
             exit(0);
         }
+        var_type = type->type;
         tables.add_symbol(id->value, type->type, false);
     } else {
         if (exp->type == "void" || exp->type == "string") {
             output::errorMismatch(yylineno);
             exit(0);
         }
-        // For Bool expressions
-//        if (!check_types_compatible(type->type, exp->type)) {
-//            output::errorMismatch(yylineno);
-//            exit(0);
-//        }
         tables.add_symbol(id->value, exp->type, false);
+        var_type = exp->type;
     }
 
-    // TODO: do something with value/type?
+    Symbol* symbol = tables.get_symbol(id->value);
+    code_gen.assign_code(exp, symbol->offset, var_type == "bool");
 }
 
 // Statement -> ID ASSIGN Exp SC
@@ -200,7 +217,8 @@ Statement::Statement(Node *id, Exp *exp) : Node() {
         output::errorMismatch(yylineno);
         exit(0);
     }
-    // TODO: do something with value/type?
+
+    code_gen.assign_code(exp, symbol->offset, symbol->type == "bool");
 }
 
 // Statement -> Call SC
@@ -239,7 +257,7 @@ RetType::RetType(
 
 // ***************EXP******************
 // Exp -> LPAREN Exp RPAREN
-Exp::Exp(Exp *exp) : Node(exp->value), type(exp->type) {
+Exp::Exp(Exp *exp) : Node(exp->value), type(exp->type), reg(exp->reg) {
 }
 
 // Exp -> CONST(bool, num, byte, string)
@@ -254,6 +272,14 @@ type) : Node(terminal->value), type(type) {
             exit(0);
         }
     }
+    if(type == "int" || type == "byte") {
+        reg = code_gen.allocate_register();
+        code_gen.ruleNum(this);
+    } else if(type == "string"){
+        code_gen.ruleStr(this);
+    } else {
+        code_gen.ruleBool(this);
+    }
 }
 
 //Exp -> ID, Call
@@ -267,11 +293,13 @@ Exp::Exp(bool is_var, Node *terminal) : Node(), is_var(is_var) {
     Symbol *symbol = tables.get_symbol(terminal->value);
     value = terminal->value;
     type = symbol->type;
+    code_gen.ruleID(this);
 }
 
 Exp::Exp(Node *terminal1, Node *terminal2,
          const string op,
-         const string type) {
+         const string type,
+         const string label="") {
     Exp *exp1 = dynamic_cast<Exp *>(terminal1);
     Exp *exp2 = dynamic_cast<Exp *>(terminal2);
 
@@ -294,15 +322,16 @@ Exp::Exp(Node *terminal1, Node *terminal2,
     }
 
     if (type == "bool") {
-//        bool t1, t2, res;
         if (exp1->type != "bool" || exp2->type != "bool") {
             output::errorMismatch(yylineno);
             exit(0);
         }
 
         this->type = "bool";
+        code_gen.bool_eval_code(this, exp1, exp2, op, label);
     } else if (type == "int") {
 
+        // TODO: same condition twice
         if ((exp1->type != "int" && exp1->type != "byte") || (exp1->type != "int" && exp1->type != "byte")) {
             output::errorMismatch(yylineno);
             exit(0);
@@ -313,6 +342,8 @@ Exp::Exp(Node *terminal1, Node *terminal2,
         } else {
             this->type = "byte";
         }
+        code_gen.binop_code(this, exp1, exp2, op);
+
         if (DEBUG)
             std::cout << "op return type is " << this->type << "\n";
 
@@ -326,6 +357,7 @@ Exp::Exp(Node *terminal1, Node *terminal2,
             exit(0);
         }
         this->type = "bool";
+        code_gen.relop_code(this, exp1, exp2, op);
     }
 }
 
@@ -341,6 +373,7 @@ Exp::Exp(Node *exp, Node *type) {
 
     this->value = converted_exp->value;
     this->type = converted_type->type;
+    this->reg = converted_exp->reg;
 }
 
 //*******************EXPLIST************************
@@ -350,6 +383,7 @@ ExpList::ExpList(Node *exp) : Node(), expressions() {
     if (DEBUG)
         std::cout << "ExpList -> Exp: " << exp->value << "\n";
     Exp *expression = dynamic_cast<Exp *>(exp);
+    Exp *exp_to_insert = code_gen.bool_exp(expression);
     expressions.push_back(expression);
 //    delete[] exp;
 }
@@ -448,6 +482,11 @@ Call::Call(Node *terminal, Node *exp_list) : Node() {
 
 Program::Program() {
 
+}
+
+Label::Label(): Node("") {
+    value = buffer.genLabel();
+    code_gen.label_block_code(value);
 }
 
 void check_bool(Node *node) {

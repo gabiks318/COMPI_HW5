@@ -94,6 +94,7 @@ void TableStack::push_scope(bool is_loop, string return_type) {
 //    std::cout << "max offset is: " << table_stack.back()->max_offset << "\n";
     SymbolTable* current_scope = table_stack.back();
     offsets.push_back(current_scope->max_offset);
+    new_scope->rbp = current_scope->rbp;
 }
 
 SymbolTable *TableStack::current_scope() {

@@ -39,6 +39,7 @@ public:
     int max_offset;
     bool is_loop;
     string* return_type;
+    string rbp;
 
     SymbolTable(int offset, bool is_loop, string return_type = "")
             : symbols(), max_offset(offset), is_loop(is_loop) {

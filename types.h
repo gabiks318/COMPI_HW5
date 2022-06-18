@@ -4,9 +4,12 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include "bp.hpp"
 
 using std::string;
 using std::vector;
+
+typedef vector<pair<int, BranchLabelIndex>> BPList;
 
 class Node {
 public:
@@ -25,6 +28,11 @@ class Funcs : public Node {
     virtual ~Funcs() = default;
 };
 
+class Label: public Node{
+public:
+    Label();
+    virtual ~Label() = default;
+};
 
 class Type : public Node {
 public:
@@ -97,12 +105,16 @@ public:
     string type;
     string value;
     bool is_var=false;
+    string reg = "";
+    BPList true_list = {};
+    BPList false_list = {};
+    BPList next_list = {};
 
     Exp() : type("void"), value("") {}
 
     Exp(Node *terminal, string type);
 
-    Exp(Node *terminal1, Node *terminal2, const string op, const string type);
+    Exp(Node *terminal1, Node *terminal2, const string op, const string type, const string label);
 
     Exp(bool is_var, Node *terminal);
 
