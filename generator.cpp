@@ -196,6 +196,8 @@ Exp* bool_exp(Exp* exp){
     if(exp->type != "bool"){
         return new Exp(exp);
     }
+    Exp* new_exp = new Exp();
+    new_exp->value = "bool";
     string true_list = allocate_label("PHI_TRUE_LABEL");
     string false_list = allocate_label("PHI_FALSE_LABEL");
     string next_list = allocate_label("PHI_NEXT_LABEL");
@@ -205,7 +207,14 @@ Exp* bool_exp(Exp* exp){
     buffer.emit(false_list + ":");
     int address2 = buffer.emit_uncond_jump("@");
     buffer.emit(next_list + ":");
-    BPList next
+    BPList next = buffer.merge(buffer.makelist(pair<int,BranchLabelIndex>(address1, FIRST)),
+                               buffer.makelist(pair<int,BranchLabelIndex>(address1, FIRST)));
+    buffer.bpatch(exp->true_list, true_list);
+    buffer.bpatch(exp->false_list, false_list);
+    buffer.bpatch(next, next_list);
+    buffer.emit_phi(new_exp, true_list, false_list);
+
+    return new_exp;
 }
 
 

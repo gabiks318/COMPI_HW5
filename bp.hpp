@@ -62,6 +62,14 @@ public:
 	//print the content of the global buffer to stdout
 	void printGlobalBuffer();
 
+    int emit_uncond_jump(string label){
+        return (label[0] != '%' && label[0] != '@') ? emit("br label %" + label) :
+               emit("br label" + label);
+    }
+
+    void emit_phi(Exp* exp, string true_label, string false_label){
+        emit(exp->reg + " = phi i32 [ 1, %" + true_label +"], [0, %" + false_label + "]");
+    }
 };
 
 #endif
