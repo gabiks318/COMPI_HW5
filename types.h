@@ -4,16 +4,18 @@
 #include <string>
 #include <vector>
 #include <iostream>
-#include "bp.hpp"
 
 using std::string;
 using std::vector;
 
-typedef vector<pair<int, BranchLabelIndex>> BPList;
+enum BranchLabelIndex {FIRST, SECOND};
+
+typedef vector<std::pair<int, BranchLabelIndex>> BPList;
 
 class Node {
 public:
     string value;
+
 
     Node(const string value = "") : value(value) {
     };
@@ -128,7 +130,7 @@ public:
 class ExpList : public Node {
 public:
     vector<Exp*> expressions;
-
+    ExpList(): expressions(){}
     ExpList(Node *exp);
 
     ExpList(Node *exp_list, Node *exp);
@@ -143,7 +145,7 @@ public:
 class Call : public Node {
 public:
     string type;
-
+    string reg = "";
     Call(Node *terminal);
 
     Call(Node *terminal, Node *exp_list);
@@ -153,6 +155,9 @@ public:
 
 class Statement : public Node {
 public:
+    BPList cont_list;
+    BPList break_list;
+
     Statement(Node *node);
 
     Statement(Type *type, Node *id);
@@ -161,7 +166,9 @@ public:
 
     Statement(Node *id, Exp *exp);
 
-    Statement( const string name, Exp *exp);
+    Statement(const string name, Exp *exp, Label* label);
+    Statement(const string name, Exp *exp, Label* exp_label, Label* true_label, Statement* statement);
+    Statement(const string name, Exp *exp, Label* true_label, Label* false_label);
 
     Statement(Exp *exp, bool is_return=false);
 
@@ -172,9 +179,11 @@ public:
 
 class Statements : public Node {
 public:
-    Statements(Statement *statement) : Node() {};
+    BPList cont_list;
+    BPList break_list;
+    Statements(Statement *statement);
 
-    Statements(Statements *statements, Statement *statement) : Node() {};
+    Statements(Statements *statements, Statement *statement);
 
     virtual ~Statements() = default;
 };

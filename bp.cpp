@@ -1,9 +1,12 @@
 #include "bp.hpp"
+#include "generator.h"
 #include <vector>
 #include <iostream>
 #include <sstream>
 
 using namespace std;
+
+extern Generator code_gen;
 
 bool replace(string& str, const string& from, const string& to, const BranchLabelIndex index);
 
@@ -29,7 +32,7 @@ int CodeBuffer::emit(const string &s){
 	return buffer.size() - 1;
 }
 
-int CodeBuffer::emit_init(){
+void CodeBuffer::emit_init(){
     code_gen.generate_global_code();
 }
 
@@ -92,4 +95,10 @@ bool replace(string& str, const string& from, const string& to, const BranchLabe
 }
 
 
+CodeBuffer::CodeBuffer(const CodeBuffer &): buffer(), globalDefs() {
 
+}
+
+void CodeBuffer::operator=(const CodeBuffer &) {
+
+}

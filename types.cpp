@@ -91,24 +91,24 @@ FuncDecl::FuncDecl(RetType *return_type, Node *id, Formals *params) {
         tables.add_function_symbol(it->value, it->type, offset);
         offset -= 1;
     }
-//    delete[] return_type;
-//    delete[] id;
-//    delete[] params;
 }
 
 //************STATEMENT****************
 // Statement -> BREAK SC / CONTINUE SC
 Statement::Statement(Node *node) {
+    int address = buffer.emit("br label %@");
     if (node->value == "break") {
         if (!tables.check_loop()) {
             output::errorUnexpectedBreak(yylineno);
             exit(0);
         }
+        this->break_list = buffer.makelist(pair<int, BranchLabelIndex>(address, FIRST));
     } else if (node->value == "continue") {
         if (!tables.check_loop()) {
             output::errorUnexpectedContinue(yylineno);
             exit(0);
         }
+        this->cont_list = buffer.makelist(pair<int, BranchLabelIndex>(address, FIRST));
     }
 }
 
@@ -237,13 +237,44 @@ Statement::Statement(Call *call) : Node() {
     // TODO: do something with value/type?
 }
 
-Statement::Statement(const string name, Exp *exp) {
+Statement::Statement(const string name, Exp *exp, Label* label) {
     if (DEBUG)
         std::cout << "Exp (bool)\n";
     if (exp->type != "bool") {
         output::errorMismatch(yylineno);
         exit(0);
     }
+    buffer.bpatch(exp->true_list, label->value);
+    string new_label = buffer.genLabel();
+    code_gen.label_block_code(new_label);
+    buffer.bpatch(exp->false_list, new_label);
+    buffer.bpatch(exp->next_list, new_label);
+}
+
+Statement::Statement(const string name, Exp *exp, Label* true_label, Label* false_label){
+    if (DEBUG)
+        std::cout << "Exp (bool)\n";
+    if (exp->type != "bool") {
+        output::errorMismatch(yylineno);
+        exit(0);
+    }
+
+    buffer.bpatch(exp->true_list, true_label->value);
+    buffer.bpatch(exp->false_list, false_label->value);
+    string new_label = buffer.genLabel();
+    code_gen.label_block_code(new_label);
+    buffer.bpatch(exp->next_list, new_label);
+}
+
+Statement::Statement(const string name, Exp *exp, Label* exp_label, Label* true_label, Statement* statement){
+    string new_label = buffer.genLabel();
+    code_gen.label_block_code(new_label);
+
+    buffer.bpatch(exp->true_list, true_label->value);
+    buffer.bpatch(exp->false_list, new_label);
+    buffer.bpatch(exp->next_list, new_label);
+    buffer.bpatch(statement->break_list, exp_label->value);
+    buffer.bpatch(statement->break_list, new_label);
 }
 
 //****************TYPE************************
@@ -293,6 +324,8 @@ Exp::Exp(bool is_var, Node *terminal) : Node(), is_var(is_var) {
     Symbol *symbol = tables.get_symbol(terminal->value);
     value = terminal->value;
     type = symbol->type;
+    if(!is_var)
+        reg = dynamic_cast<Call*>(terminal)->reg;
     code_gen.ruleID(this);
 }
 
@@ -384,24 +417,22 @@ ExpList::ExpList(Node *exp) : Node(), expressions() {
         std::cout << "ExpList -> Exp: " << exp->value << "\n";
     Exp *expression = dynamic_cast<Exp *>(exp);
     Exp *exp_to_insert = code_gen.bool_exp(expression);
-    expressions.push_back(expression);
-//    delete[] exp;
+
+    expressions.push_back(exp_to_insert);
 }
 
-// ExpList -> Exp, ExpList
-ExpList::ExpList(Node *exp_list, Node *exp) : Node(), expressions() {
-    if (DEBUG)
-        std::cout << "ExpList -> Exp,ExpList" << "\n";
-    expressions.push_back(dynamic_cast<Exp *>(exp));
-    vector<Exp *> expressions_list = (dynamic_cast<ExpList *>(exp_list))->expressions;
-    for (int i = 0; i < expressions_list.size(); ++i) {
-        expressions.push_back(new Exp(expressions_list[i]));
-
-    }
-
-//        delete[] exp;
-//        delete[] exp_list;
-}
+//// ExpList -> Exp, ExpList
+//ExpList::ExpList(Node *exp_list, Node *exp) : Node(), expressions() {
+//    if (DEBUG)
+//        std::cout << "ExpList -> Exp,ExpList" << "\n";
+//    expressions.push_back(dynamic_cast<Exp *>(exp));
+//    vector<Exp *> expressions_list = (dynamic_cast<ExpList *>(exp_list))->expressions;
+//    for (int i = 0; i < expressions_list.size(); ++i) {
+//        expressions.push_back(new Exp(expressions_list[i]));
+//
+//    }
+//
+//}
 
 //*******************CALL*********************
 
@@ -433,6 +464,8 @@ Call::Call(Node *terminal) : Node() {
 
     type = symbol->type;
     value = symbol->name;
+    ExpList empty_exp = ExpList();
+    code_gen.function_code(this, &empty_exp);
 }
 
 // Call -> ID LPAREN ExpList RPAREN
@@ -441,19 +474,16 @@ Call::Call(Node *terminal, Node *exp_list) : Node() {
         std::cout << "Call " << terminal->value << std::endl;
     ExpList *expressions_list = dynamic_cast<ExpList *>(exp_list);
     string name = terminal->value;
-//    std::cout << "meir";
     if (!tables.symbol_exists(name)) {
         output::errorUndefFunc(yylineno, name);
         exit(0);
     }
-//    std::cout << "meir1";
     Symbol *symbol = tables.get_symbol(name);
     if (!symbol->is_function) {
         output::errorUndefFunc(yylineno, name);
         exit(0);
     }
 
-//    std::cout << "meir2";
     if (symbol->params.size() != expressions_list->expressions.size()) {
         vector<string> converted_params;
         for (int i = 0; i < symbol->params.size(); ++i) {
@@ -462,7 +492,6 @@ Call::Call(Node *terminal, Node *exp_list) : Node() {
         output::errorPrototypeMismatch(yylineno, name, converted_params);
         exit(0);
     }
-//    std::cout << "meir3";
     for (int i = 0; i < symbol->params.size(); i++) {
         if (symbol->params[i] != expressions_list->expressions[i]->type) {
             if (symbol->params[i] != "int" || expressions_list->expressions[i]->type != "byte") {
@@ -475,9 +504,9 @@ Call::Call(Node *terminal, Node *exp_list) : Node() {
             }
         }
     }
-//    std::cout << "meir4";
     type = symbol->type;
     value = symbol->name;
+    code_gen.function_code(this, expressions_list);
 }
 
 Program::Program() {
@@ -497,3 +526,15 @@ void check_bool(Node *node) {
     }
 }
 
+Statements::Statements(Statement *statement) {
+        break_list = buffer.merge(break_list, statement->break_list);
+        cont_list = buffer.merge(cont_list, statement->cont_list);
+        delete statement;
+}
+
+Statements::Statements(Statements *statements, Statement *statement): Node(), cont_list(), break_list() {
+        break_list = buffer.merge(statements->break_list, statement->break_list);
+        cont_list = buffer.merge(statements->cont_list, statement->cont_list);
+        delete statements;
+        delete statement;
+}

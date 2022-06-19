@@ -1,6 +1,5 @@
-#include "generator.h"
-#include "bp.hpp"
 #include "symbol_table.h"
+#include "generator.h"
 #include <string>
 
 extern CodeBuffer buffer;
@@ -46,8 +45,8 @@ void Generator::label_block_code(string label){
     buffer.emit(label + ":");
 }
 
-void Generator::binop_code(Exp& res, const Exp& operand1, const Exp& operand2, const string& op) {
-    res.reg = allocate_register();
+void Generator::binop_code(Exp* res, const Exp& operand1, const Exp& operand2, const string& op) {
+    res->reg = allocate_register();
     string op_text;
     if(op == "+"){
         op_text = "add";
@@ -56,7 +55,7 @@ void Generator::binop_code(Exp& res, const Exp& operand1, const Exp& operand2, c
     } else if(op == "*"){
         op_text = "mul";
     } else {
-        if(res.type == "int"){
+        if(res->type == "int"){
             op_text = "sdiv";
         } else {
             op_text = "udiv";
@@ -64,20 +63,20 @@ void Generator::binop_code(Exp& res, const Exp& operand1, const Exp& operand2, c
     }
     if(op == "/"){
         buffer.emit("call void @check_division(i32 " + operand2.reg + ")");
-        buffer.emit(res.reg + " = " + op_text + " i32 " + operand1.reg + ", " + operand2.reg);
+        buffer.emit(res->reg + " = " + op_text + " i32 " + operand1.reg + ", " + operand2.reg);
     } else{
-        buffer.emit(res.reg + " = " + op_text + " i32" + operand1.reg + ", " + operand2.reg);
-        if(res.type == "byte"){
-            string old_reg = res.reg;
-            res.reg = allocate_register();
-            buffer.emit(res.reg + " = and i32 255" + old_reg);
+        buffer.emit(res->reg + " = " + op_text + " i32" + operand1.reg + ", " + operand2.reg);
+        if(res->type == "byte"){
+            string old_reg = res->reg;
+            res->reg = allocate_register();
+            buffer.emit(res->reg + " = and i32 255" + old_reg);
         }
     }
 
 }
 
-void Generator::relop_code(Exp& res, const Exp& operand1, const Exp& operand2, const string& op) {
-    res.reg = allocate_register();
+void Generator::relop_code(Exp* res, const Exp& operand1, const Exp& operand2, const string& op) {
+    res->reg = allocate_register();
     string op_text;
     if(op == "=="){
         op_text = "eq";
@@ -93,32 +92,32 @@ void Generator::relop_code(Exp& res, const Exp& operand1, const Exp& operand2, c
         op_text = "sle";
     }
 
-    buffer.emit(res.reg + " = icmp " + op_text + " i32 " + operand1.reg + ", " + operand2.reg);
+    buffer.emit(res->reg + " = icmp " + op_text + " i32 " + operand1.reg + ", " + operand2.reg);
 }
 
 
-void Generator::bool_eval_code(Exp& res, const Exp& operand1, const Exp& operand2, const string& op, const string& label){
+void Generator::bool_eval_code(Exp* res, const Exp& operand1, const Exp& operand2, const string& op, const string& label){
     if(op == "and"){
         buffer.bpatch(operand1.true_list, label);
-        res.true_list = BPList(operand2.true_list);
-        res.false_list = buffer.merge(operand1.false_list, operand2.false_list);
+        res->true_list = BPList(operand2.true_list);
+        res->false_list = buffer.merge(operand1.false_list, operand2.false_list);
     } else if(op == "or"){
         buffer.bpatch(operand1.false_list, label);
-        res.true_list = buffer.merge(operand1.true_list, operand2.true_list);
-        res.false_list = BPList(operand2.false_list);
+        res->true_list = buffer.merge(operand1.true_list, operand2.true_list);
+        res->false_list = BPList(operand2.false_list);
     } else {
-        res.true_list = BPList(operand1.true_list);
-        res.false_list = BPList(operand1.false_list);
+        res->true_list = BPList(operand1.true_list);
+        res->false_list = BPList(operand1.false_list);
     }
 
 }
 
-void Generator::assign_code(Exp &exp, int offset, bool is_bool) {
-    if(is_bool){
-        Exp* new_exp = code_gen.bool_exp(exp);
-        code_gen.generate_store_var(tables.current_scope()->rbp, offset, new_exp->reg);
+void Generator::assign_code(Exp *exp, int offset, bool is_bool) {
+    if(is_bool) {
+        Exp* new_exp = bool_exp(exp);
+        generate_store_var(tables.current_scope()->rbp, offset, new_exp->reg);
     } else {
-        code_gen.generate_store_var(tables.current_scope()->rbp, offset, exp->reg);
+        generate_store_var(tables.current_scope()->rbp, offset, exp->reg);
     }
 }
 
@@ -143,7 +142,7 @@ void Generator::ruleNum(Exp* exp){
 void Generator::ruleStr(Exp* exp){
     string str = exp->value;
     str.pop_back();
-    string reg = code_gen.allocate_global_register();
+    string reg = allocate_global_register();
     string size_str = "[" + to_string(str.length()) + " x i8]";
     string get_ptr = "getelementptr" + size_str + ", " + size_str + "* " + reg + ", i32 0, i32 0";
     buffer.emitGlobal(reg + " = constant " + size_str + " c" + str + "\\00\"");
@@ -192,7 +191,7 @@ void Generator::generate_store_var(string rbp, int offset, string reg) {
     buffer.emit("store i32 " + reg + ", i32* " + var_ptr);
 }
 
-Exp* bool_exp(Exp* exp){
+Exp* Generator::bool_exp(Exp* exp){
     if(exp->type != "bool"){
         return new Exp(exp);
     }
@@ -216,5 +215,63 @@ Exp* bool_exp(Exp* exp){
 
     return new_exp;
 }
+
+void Generator::next_label_code(Exp* exp) {
+    int address = buffer.emit("br label %@");
+    exp->next_list = buffer.merge(buffer.makelist(pair<int, BranchLabelIndex>(address, FIRST)),
+                                  exp->next_list);
+}
+
+void Generator::function_code(Call* func, ExpList* args) {
+    func->reg = allocate_register();
+    string emitted_args = "";
+    for(int i = args->expressions.size() - 1; i >=0 ; --i){
+        Exp exp = args->expressions[i];
+        if(exp.type == "string"){
+            emitted_args += "i8*";
+        } else {
+            emitted_args += "i32";
+        }
+        emitted_args += " ";
+        emitted_args += exp.reg;
+        if(i > 0)
+            emitted_args += ", ";
+    }
+    if(func->type == "void")
+        buffer.emit("call void @" + func->value + "(" + emitted_args + ")" );
+    else {
+      string emitted_return_type = func->type == "void" ? "i8*" : "i32";
+      buffer.emit(func->reg + " = call " + emitted_return_type + " @" + func->value + "(" + emitted_args + ")");
+    }
+}
+
+void Generator::function_declaration_code(Node* func_id, Formals* params, RetType* ret_type) {
+    string emitted_args = "";
+    for(int i = 0; i < params->formals_list.size(); i++){
+        FormalDecl* param = params->formals_list[i];
+        if(param->type == "string"){
+            emitted_args += "i8*";
+        } else {
+            emitted_args += "i32";
+        }
+        if(i < params->formals_list.size() - 1)
+            emitted_args += ", ";
+    }
+    string emitted_return_type;
+    if(ret_type->type == "void"){
+        emitted_return_type = "void";
+    } else if(ret_type->type == "string"){
+        emitted_return_type = "i8*";
+    } else {
+        emitted_return_type = "i32";
+    }
+    buffer.emit("define " + emitted_return_type + " @" + func_id->value + "(" + emitted_args + ")");
+}
+
+void Generator::merge_statement(Statement* statement1, Statement* statement2){
+    statement1->break_list = buffer.merge(statement1->break_list, statement2->break_list);
+    statement1->cont_list = buffer.merge(statement1->cont_list, statement2->cont_list);
+}
+
 
 

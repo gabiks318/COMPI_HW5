@@ -3,23 +3,20 @@
 
 #include <vector>
 #include <string>
-#include "generator.h"
-
+#include "types.h"
 
 using namespace std;
-extern Generator code_gen;
 
 //this enum is used to distinguish between the two possible missing labels of a conditional branch in LLVM during backpatching.
 //for an unconditional branch (which contains only a single label) use FIRST.
-enum BranchLabelIndex {FIRST, SECOND};
 
 class CodeBuffer{
-	CodeBuffer();
-	CodeBuffer(CodeBuffer const&);
-    void operator=(CodeBuffer const&);
-	std::vector<std::string> buffer;
-	std::vector<std::string> globalDefs;
 public:
+    CodeBuffer();
+    CodeBuffer(CodeBuffer const&);
+    void operator=(CodeBuffer const&);
+    std::vector<std::string> buffer;
+    std::vector<std::string> globalDefs;
 	static CodeBuffer &instance();
 
 	// ******** Methods to handle the code section ******** //
@@ -30,7 +27,7 @@ public:
 	//writes command to the buffer, returns its location in the buffer
 	int emit(const std::string &command);
 
-    int emit_init();
+    void emit_init();
 	//gets a pair<int,BranchLabelIndex> item of the form {buffer_location, branch_label_index} and creates a list for it
 	static vector<pair<int,BranchLabelIndex>> makelist(pair<int,BranchLabelIndex> item);
 

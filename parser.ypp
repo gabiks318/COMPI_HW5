@@ -10,6 +10,7 @@
     extern int yylineno;
     extern int yylex();
     extern TableStack tables;
+    extern Generator code_gen;
     int yyerror(const char* message);
 
     using namespace output;
@@ -78,25 +79,28 @@ Statement: LBRACE {tables.push_scope();} Statements {tables.pop_scope();} RBRACE
            | Call SC                                                {$$ = new Statement(dynamic_cast<Call*>($1));}
            | RETURN SC                                              {$$ = new Statement(new Exp(), true);}
            | RETURN Exp SC                                          {$$ = new Statement(dynamic_cast<Exp*>($2), true);}
-           | IF LPAREN CheckBool RPAREN OS Statement                      {$$ = new Statement("IF", dynamic_cast<Exp*>($3));tables.pop_scope();}
-           | IF LPAREN CheckBool RPAREN OS Statement  ELSE {tables.pop_scope();} OS  Statement   {$$ = new Statement("IF ELSE", dynamic_cast<Exp*>($3)); tables.pop_scope();}
-           | WHILE LPAREN CheckBool RPAREN  {tables.push_scope(true);} Statement                 {$$ = new Statement("WHILE", dynamic_cast<Exp*>($3)); tables.pop_scope();}
+           | IF LPAREN CheckBool RPAREN OS Label Statement          {$$ = new Statement("IF", dynamic_cast<Exp*>($3), dynamic_cast<Label*>($6));tables.pop_scope();}
+           | IF LPAREN CheckBool RPAREN OS Label Statement ELSE {code_gen.next_label_code(dynamic_cast<Exp*>($3));tables.pop_scope();} OS Label Statement  {$$ = new Statement("IF ELSE", dynamic_cast<Exp*>($3), dynamic_cast<Label*>($6), dynamic_cast<Label*>($10)); tables.pop_scope();}
+           | WHILE LPAREN Label CheckBool RPAREN Label  {tables.push_scope(true);} Statement                 {$$ = new Statement("WHILE", dynamic_cast<Exp*>($4), dynamic_cast<Label*>($3), dynamic_cast<Label*>($6), dynamic_cast<Statement*>($7)); tables.pop_scope();}
            | BREAK SC                                               {$$ = new Statement($1);}
            | CONTINUE SC                                            {$$ = new Statement($1);}
 
-Call: ID LPAREN ExpList RPAREN                                      {$$ = new Call($1, $3);}
-      | ID LPAREN RPAREN                                            {$$ = new Call($1);}
+Call: ID LPAREN RPAREN                                            {$$ = new Call($1);}
+       | ID LPAREN  ExpList RPAREN                                {$$ = new Call($1, $3);}
+
 
 ExpList: Exp                                                        {$$ = new ExpList($1);}
-         | Exp COMMA ExpList                                        {$$ = new ExpList($3, $1);}
+         | Exp COMMA ExpList                                        {$$ = $3;
+                                                                    (dynamic_cast<ExpList *>($$)->expressions).insert((dynamic_cast<ExpList *>($$)->expressions).begin(),
+                                                                                    code_gen.bool_exp(dynamic_cast<Exp *>($1)));}
 
 Type: INT                                                           {$$ = new Type("int");}
       | BYTE                                                        {$$ = new Type("byte");}
       | BOOL                                                        {$$ = new Type("bool");}
 
 Exp: LPAREN Exp RPAREN                                              {$$ = new Exp(dynamic_cast<Exp*>($2));}
-     | Exp ADD_SUB Exp                                              {$$ = new Exp($1, $3, $2->value, "int");}
-     | Exp MULT_DIV Exp                                             {$$ = new Exp($1, $3, $2->value, "int");}
+     | Exp ADD_SUB Exp                                              {$$ = new Exp($1, $3, $2->value, "int", "");}
+     | Exp MULT_DIV Exp                                             {$$ = new Exp($1, $3, $2->value, "int", "");}
      | ID                                                           {$$ = new Exp(true, $1);}
      | Call                                                         {$$ = new Exp(false, $1);}
      | NUM                                                          {$$ = new Exp($1, "int");}
@@ -104,10 +108,10 @@ Exp: LPAREN Exp RPAREN                                              {$$ = new Ex
      | STRING                                                       {$$ = new Exp($1, "string");}
      | TRUE                                                         {$$ = new Exp($1, "bool");}
      | FALSE                                                        {$$ = new Exp($1, "bool");}
-     | NOT Exp                                                      {$$ = new Exp($2, $2, $1->value, "bool");}
+     | NOT Exp                                                      {$$ = new Exp($2, $2, $1->value, "bool", "");}
      | Exp AND Label Exp                                            {$$ = new Exp($1, $4, $2->value, "bool", $3->value);}
      | Exp OR Label Exp                                             {$$ = new Exp($1, $4, $2->value, "bool", $3->value);}
-     | Exp RELOP Exp                                                {$$ = new Exp($1, $3, $2->value, "relop");}
+     | Exp RELOP Exp                                                {$$ = new Exp($1, $3, $2->value, "relop", "");}
      | LPAREN Type RPAREN Exp                                       {$$ = new Exp($4, $2);}
 
 OS:                                                                 {tables.push_scope();}
@@ -121,6 +125,8 @@ CodeBuffer buffer = CodeBuffer::instance();
 int main(){
         int res = yyparse();
         tables.check_program();
+        buffer.printGlobalBuffer();
+        buffer.printCodeBuffer();
         return res;
 }
 
