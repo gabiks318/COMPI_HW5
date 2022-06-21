@@ -105,14 +105,13 @@ public:
 class Exp : public Node {
 public:
     string type;
-    string value;
     bool is_var=false;
     string reg = "";
     BPList true_list = {};
     BPList false_list = {};
     BPList next_list = {};
 
-    Exp() : type("void"), value("") {}
+    Exp() : Node(""),type("void") {}
 
     Exp(Node *terminal, string type);
 
@@ -146,34 +145,36 @@ class Call : public Node {
 public:
     string type;
     string reg = "";
+    BPList true_list = {};
+    BPList false_list = {};
+    BPList next_list = {};
     Call(Node *terminal);
 
     Call(Node *terminal, Node *exp_list);
 
     virtual ~Call() = default;
 };
-
 class Statement : public Node {
 public:
-    BPList cont_list;
-    BPList break_list;
+    BPList cont_list = {};
+    BPList break_list = {};
 
+    Statement(): Node(){}
     Statement(Node *node);
-
     Statement(Type *type, Node *id);
 
     Statement(Type *type, Node *id, Exp *exp);
 
     Statement(Node *id, Exp *exp);
 
-    Statement(const string name, Exp *exp, Label* label);
-    Statement(const string name, Exp *exp, Label* exp_label, Label* true_label, Statement* statement);
-    Statement(const string name, Exp *exp, Label* true_label, Label* false_label);
+    Statement(Statement* statement, Exp *exp, Label* label);
+    Statement(const string& name, Exp *exp, Label* exp_label, Label* true_label, Statement* statement);
+    Statement(Statement* statement1, Statement* statement2, Exp *exp, Label* true_label, Label* false_label);
 
     Statement(Exp *exp, bool is_return=false);
 
     Statement(Call *call);
-
+    void merge_lists_statements(Node* node);
     virtual ~Statement() = default;
 };
 

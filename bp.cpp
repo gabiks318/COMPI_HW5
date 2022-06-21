@@ -1,5 +1,6 @@
 #include "bp.hpp"
 #include "generator.h"
+#include "symbol_table.h"
 #include <vector>
 #include <iostream>
 #include <sstream>
@@ -28,15 +29,29 @@ string CodeBuffer::genLabel(){
 }
 
 int CodeBuffer::emit(const string &s){
+    if(DEBUG)
+        std::cout << "code generated: " <<  s << "\n";
     buffer.push_back(s);
 	return buffer.size() - 1;
 }
 
 void CodeBuffer::emit_init(){
     code_gen.generate_global_code();
+    declare_externs();
+    define_prints();
 }
 
 void CodeBuffer::bpatch(const vector<pair<int,BranchLabelIndex>>& address_list, const std::string &label){
+    if(DEBUG){
+        std:cout << "backpatching " << address_list.size() <<  " addresses: " + label + " \n";
+        for(int i = 0; i < address_list.size(); i++){
+            std::cout << address_list[i].first << ", ";
+            if(i == address_list.size() - 1)
+                std::cout << "\n";
+        }
+
+    }
+
     for(vector<pair<int,BranchLabelIndex>>::const_iterator i = address_list.begin(); i != address_list.end(); i++){
     	int address = (*i).first;
     	BranchLabelIndex labelIndex = (*i).second;
@@ -102,3 +117,27 @@ CodeBuffer::CodeBuffer(const CodeBuffer &): buffer(), globalDefs() {
 void CodeBuffer::operator=(const CodeBuffer &) {
 
 }
+
+void CodeBuffer::declare_externs(){
+    emit("@.intFormat = internal constant [4 x i8] c\"%d\\0A\\00\"");
+    emit("@.DIVIDE_BY_ZERO.str = internal constant [23 x i8] c\"Error division by zero\\00\"");
+
+    emit("declare i32 @printf(i8*, ...)");
+    emit("declare void @exit(i32)");
+
+    emit("@.int_specifier = constant [4 x i8] c\"%d\\0A\\00\"");
+    emit("@.str_specifier = constant [4 x i8] c\"%s\\0A\\00\"");
+}
+void CodeBuffer::define_prints(){
+    emit("define void @print(i8*){");
+    emit("call i32 (i8*, ...) @printf(i8* getelementptr([4 x i8], [4 x i8]* @.str_specifier, i32 0, i32 0), i8* %0)");
+    emit("ret void");
+    emit("}");
+
+    emit("define void @printi(i32){");
+    emit("%format_ptr = getelementptr [4 x i8], [4 x i8]* @.intFormat, i32 0, i32 0");
+    emit("call i32 (i8*, ...) @printf(i8* getelementptr([4 x i8], [4 x i8]* @.intFormat, i32 0, i32 0), i32 %0)");
+    emit("ret void");
+    emit("}");
+}
+

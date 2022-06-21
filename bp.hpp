@@ -28,6 +28,9 @@ public:
 	int emit(const std::string &command);
 
     void emit_init();
+    void declare_externs();
+    void define_prints();
+
 	//gets a pair<int,BranchLabelIndex> item of the form {buffer_location, branch_label_index} and creates a list for it
 	static vector<pair<int,BranchLabelIndex>> makelist(pair<int,BranchLabelIndex> item);
 
@@ -61,7 +64,7 @@ public:
 
     int emit_uncond_jump(string label){
         return (label[0] != '%' && label[0] != '@') ? emit("br label %" + label) :
-               emit("br label" + label);
+               emit("br label " + label);
     }
 
     void emit_phi(Exp* exp, string true_label, string false_label){

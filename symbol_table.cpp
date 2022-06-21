@@ -12,9 +12,7 @@ void SymbolTable::add_symbol(const Symbol &symbol) {
 
 
 bool SymbolTable::symbol_exists(const string &name) {
-//    std::cout << "Checking scope of size " << symbols.size() << "\n";
-    for(int i = 0; i < symbols.size(); i++){
-//        std::cout << "iteration " << i << " Symbol is:" << symbols[i]->name << "\n";
+    for (int i = 0; i < symbols.size(); i++) {
         if (symbols[i]->name == name)
             return true;
     }
@@ -40,7 +38,6 @@ TableStack::TableStack() : table_stack(), offsets() {
 }
 
 bool TableStack::symbol_exists(const string &name) {
-//    std::cout << "Checking all scopes " << table_stack.size() << "\n";
     for (auto it = table_stack.rbegin(); it != table_stack.rend(); ++it) {
         SymbolTable *current = *it;
         if (current->symbol_exists(name))
@@ -57,6 +54,7 @@ bool TableStack::check_loop() {
     }
     return false;
 }
+
 Symbol *TableStack::get_symbol(const string &name) {
     for (auto it = table_stack.begin(); it != table_stack.end(); ++it) {
         Symbol *symbol = (*it)->get_symbol(name);
@@ -66,7 +64,7 @@ Symbol *TableStack::get_symbol(const string &name) {
     return nullptr;
 }
 
-void TableStack::add_symbol(const string &name, const string &type, bool is_function, vector<string> params) {
+void TableStack::add_symbol(const string &name, const string &type, bool is_function, vector <string> params) {
     SymbolTable *current_scope = table_stack.back();
     int offset;
     if (is_function) {
@@ -89,12 +87,15 @@ void TableStack::add_function_symbol(const string &name, const string &type, int
 void TableStack::push_scope(bool is_loop, string return_type) {
     if (DEBUG)
         std::cout << "Pushing scope\n";
-    SymbolTable* new_scope = new SymbolTable(offsets.back(), is_loop, return_type);
+    SymbolTable *new_scope = new SymbolTable(offsets.back(), is_loop, return_type);
+    if(table_stack.size() > 0){
+        new_scope->rbp = table_stack.back()->rbp;
+    } else {
+        new_scope->rbp = "";
+    }
     this->table_stack.push_back(new_scope);
-//    std::cout << "max offset is: " << table_stack.back()->max_offset << "\n";
-    SymbolTable* current_scope = table_stack.back();
+    SymbolTable *current_scope = table_stack.back();
     offsets.push_back(current_scope->max_offset);
-    new_scope->rbp = current_scope->rbp;
 }
 
 SymbolTable *TableStack::current_scope() {
@@ -119,25 +120,25 @@ void TableStack::pop_scope() {
         std::cout << "Popping scope\n";
     SymbolTable *scope = table_stack.back();
     table_stack.pop_back();
-    output::endScope();
-    for (auto it = scope->symbols.begin(); it != scope->symbols.end(); ++it) {
-        auto offset = offsets.back();
-//        std::cout << "popping offset " << offset << "\n";
-        offsets.pop_back();
-        if ((*it)->is_function) {
-            vector<string> converted_params;
-            for (int i = 0; i < (*it)->params.size(); ++i) {
-                converted_params.push_back(convert_to_upper_case((*it)->params[i]));
+    if (DEBUG) {
+        output::endScope();
+        for (auto it = scope->symbols.begin(); it != scope->symbols.end(); ++it) {
+            offsets.pop_back();
+            if ((*it)->is_function) {
+                vector <string> converted_params;
+                for (int i = 0; i < (*it)->params.size(); ++i) {
+                    converted_params.push_back(convert_to_upper_case((*it)->params[i]));
+                }
+                output::printID((*it)->name, 0,
+                                output::makeFunctionType(convert_to_upper_case((*it)->type), converted_params));
+            } else {
+                output::printID((*it)->name, (*it)->offset, convert_to_upper_case((*it)->type));
             }
-            output::printID((*it)->name, 0,
-                            output::makeFunctionType(convert_to_upper_case((*it)->type), converted_params));
-        } else {
-            output::printID((*it)->name, (*it)->offset, convert_to_upper_case((*it)->type));
         }
     }
-    if(offsets.size() > 0)
+
+    if (offsets.size() > 0)
         offsets.pop_back();
-//    std::cout << "max offset is: " << table_stack.back()->max_offset << "\n";
     delete scope;
 
 

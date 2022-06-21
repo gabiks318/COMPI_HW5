@@ -18,15 +18,13 @@ std::string Generator::allocate_global_register() {
 }
 
 string Generator::allocate_label(string label){
-    string new_label = label +to_string(label_max_num);
+    string new_label = label + to_string(label_max_num);
     label_max_num++;
     return new_label;
 }
 
 void Generator::generate_global_code() {
     buffer.emit("@.DIV_BY_ZERO_ERROR = internal constant [23 x i8] c\"Error division by zero\\00\"");
-    buffer.emit("declare i32 @printf(i8*, ...)");
-    buffer.emit("declare void @exit(i32)");
 
     // Division by zero check function
     buffer.emit("define void @check_division(i32) {");
@@ -35,6 +33,7 @@ void Generator::generate_global_code() {
     buffer.emit("ILLEGAL:");
     buffer.emit("call void @print(i8* getelementptr([23 x i8], [23 x i8]* @.DIV_BY_ZERO_ERROR, i32 0, i32 0))");
     buffer.emit("call void @exit(i32 0)");
+    buffer.emit("ret void");
     buffer.emit("LEGAL:");
     buffer.emit("ret void");
     buffer.emit("}");
@@ -65,17 +64,17 @@ void Generator::binop_code(Exp* res, const Exp& operand1, const Exp& operand2, c
         buffer.emit("call void @check_division(i32 " + operand2.reg + ")");
         buffer.emit(res->reg + " = " + op_text + " i32 " + operand1.reg + ", " + operand2.reg);
     } else{
-        buffer.emit(res->reg + " = " + op_text + " i32" + operand1.reg + ", " + operand2.reg);
+        buffer.emit(res->reg + " = " + op_text + " i32 " + operand1.reg + ", " + operand2.reg);
         if(res->type == "byte"){
             string old_reg = res->reg;
             res->reg = allocate_register();
-            buffer.emit(res->reg + " = and i32 255" + old_reg);
+            buffer.emit(res->reg + " = and i32 255, " + old_reg);
         }
     }
 
 }
 
-void Generator::relop_code(Exp* res, const Exp& operand1, const Exp& operand2, const string& op) {
+void Generator::relop_code(Exp* res, const Exp* operand1, const Exp* operand2, const string& op) {
     res->reg = allocate_register();
     string op_text;
     if(op == "=="){
@@ -92,27 +91,30 @@ void Generator::relop_code(Exp* res, const Exp& operand1, const Exp& operand2, c
         op_text = "sle";
     }
 
-    buffer.emit(res->reg + " = icmp " + op_text + " i32 " + operand1.reg + ", " + operand2.reg);
+    buffer.emit(res->reg + " = icmp " + op_text + " i32 " + operand1->reg + ", " + operand2->reg);
+    int address = buffer.emit("br i1 " + res->reg + ", label @, label @");
+    res->true_list = buffer.makelist(pair<int, BranchLabelIndex>(address, FIRST));
+    res->false_list = buffer.makelist(pair<int, BranchLabelIndex>(address, SECOND));
 }
 
 
-void Generator::bool_eval_code(Exp* res, const Exp& operand1, const Exp& operand2, const string& op, const string& label){
+void Generator::bool_eval_code(Exp* res, const Exp* operand1, const Exp* operand2, const string& op, const string& label){
     if(op == "and"){
-        buffer.bpatch(operand1.true_list, label);
-        res->true_list = BPList(operand2.true_list);
-        res->false_list = buffer.merge(operand1.false_list, operand2.false_list);
+        buffer.bpatch(operand1->true_list, label);
+        res->true_list = BPList(operand2->true_list);
+        res->false_list = buffer.merge(operand1->false_list, operand2->false_list);
     } else if(op == "or"){
-        buffer.bpatch(operand1.false_list, label);
-        res->true_list = buffer.merge(operand1.true_list, operand2.true_list);
-        res->false_list = BPList(operand2.false_list);
+        buffer.bpatch(operand1->false_list, label);
+        res->true_list = buffer.merge(operand1->true_list, operand2->true_list);
+        res->false_list = BPList(operand2->false_list);
     } else {
-        res->true_list = BPList(operand1.true_list);
-        res->false_list = BPList(operand1.false_list);
+        res->true_list = BPList(operand1->false_list);
+        res->false_list = BPList(operand1->true_list);
     }
 
 }
 
-void Generator::assign_code(Exp *exp, int offset, bool is_bool) {
+void Generator::assign_code(Exp *exp, int offset, bool is_bool){
     if(is_bool) {
         Exp* new_exp = bool_exp(exp);
         generate_store_var(tables.current_scope()->rbp, offset, new_exp->reg);
@@ -135,6 +137,15 @@ void Generator::return_code(string &type, string &reg) {
     }
 }
 
+void Generator::return_value(string &type, string &value) {
+    string return_type;
+    if(type == "string"){
+        return_type = "i8*";
+    } else {
+        return_type = "i32";
+    }
+    buffer.emit("ret " + return_type + " " + value);
+}
 void Generator::ruleNum(Exp* exp){
     buffer.emit(exp->reg + " = add i32 " + exp->value + ", 0");
 }
@@ -145,8 +156,11 @@ void Generator::ruleStr(Exp* exp){
     string reg = allocate_global_register();
     string size_str = "[" + to_string(str.length()) + " x i8]";
     string get_ptr = "getelementptr" + size_str + ", " + size_str + "* " + reg + ", i32 0, i32 0";
+
     buffer.emitGlobal(reg + " = constant " + size_str + " c" + str + "\\00\"");
+    reg.replace(0, 1, "%");
     buffer.emit(reg + ".ptr = " + get_ptr);
+    exp->reg = reg + ".ptr";
 }
 
 void Generator::ruleBool(Exp* exp){
@@ -156,6 +170,8 @@ void Generator::ruleBool(Exp* exp){
     } else {
         exp->false_list = buffer.makelist(pair<int, BranchLabelIndex>(address, SECOND));
     }
+//    std::cout << "LLLLists sizes: t-" << exp->true_list.size() << " f-" << exp->false_list.size() << " value is " << exp->value << "\n";
+
 }
 
 void Generator::ruleID(Exp *exp) {
@@ -196,18 +212,24 @@ Exp* Generator::bool_exp(Exp* exp){
         return new Exp(exp);
     }
     Exp* new_exp = new Exp();
-    new_exp->value = "bool";
+    new_exp->reg = allocate_register();
+    new_exp->type = "bool";
     string true_list = allocate_label("PHI_TRUE_LABEL");
     string false_list = allocate_label("PHI_FALSE_LABEL");
     string next_list = allocate_label("PHI_NEXT_LABEL");
+
     buffer.emit_uncond_jump(true_list);
     buffer.emit(true_list + ":");
     int address1 = buffer.emit_uncond_jump("@");
+
     buffer.emit(false_list + ":");
     int address2 = buffer.emit_uncond_jump("@");
+
     buffer.emit(next_list + ":");
+
     BPList next = buffer.merge(buffer.makelist(pair<int,BranchLabelIndex>(address1, FIRST)),
-                               buffer.makelist(pair<int,BranchLabelIndex>(address1, FIRST)));
+                               buffer.makelist(pair<int,BranchLabelIndex>(address2, FIRST)));
+//    std::cout << "Lists sizes: t-" << exp->true_list.size() << " f-" << exp->false_list.size() << "\n";
     buffer.bpatch(exp->true_list, true_list);
     buffer.bpatch(exp->false_list, false_list);
     buffer.bpatch(next, next_list);
@@ -217,15 +239,21 @@ Exp* Generator::bool_exp(Exp* exp){
 }
 
 void Generator::next_label_code(Exp* exp) {
-    int address = buffer.emit("br label %@");
+    int address = buffer.emit("br label @");
     exp->next_list = buffer.merge(buffer.makelist(pair<int, BranchLabelIndex>(address, FIRST)),
                                   exp->next_list);
+}
+
+string Generator::allocate_function_stack(){
+    string rbp = allocate_register();
+    buffer.emit(rbp + " = alloca i32, i32 50");
+    return rbp;
 }
 
 void Generator::function_code(Call* func, ExpList* args) {
     func->reg = allocate_register();
     string emitted_args = "";
-    for(int i = args->expressions.size() - 1; i >=0 ; --i){
+    for(int i = 0; i < args->expressions.size() ; ++i){
         Exp exp = args->expressions[i];
         if(exp.type == "string"){
             emitted_args += "i8*";
@@ -234,12 +262,22 @@ void Generator::function_code(Call* func, ExpList* args) {
         }
         emitted_args += " ";
         emitted_args += exp.reg;
-        if(i > 0)
+        if(i < args->expressions.size() - 1)
             emitted_args += ", ";
     }
     if(func->type == "void")
         buffer.emit("call void @" + func->value + "(" + emitted_args + ")" );
-    else {
+    else if(func->type == "bool"){
+        buffer.emit(func->reg + " = call i32 @" + func->value + "(" + emitted_args + ")");
+        Exp exp = Exp();
+        exp.type = "bool";
+        exp.reg = allocate_register();
+        buffer.emit(exp.reg + " = icmp ne i32 0, " + func->reg);
+        func->reg = exp.reg;
+        int address = buffer.emit("br i1 " + func->reg + " , label @, label @");
+        func->true_list = buffer.makelist(pair<int, BranchLabelIndex>(address, FIRST));
+        func->false_list = buffer.makelist(pair<int, BranchLabelIndex>(address, SECOND));
+    } else {
       string emitted_return_type = func->type == "void" ? "i8*" : "i32";
       buffer.emit(func->reg + " = call " + emitted_return_type + " @" + func->value + "(" + emitted_args + ")");
     }
@@ -265,7 +303,16 @@ void Generator::function_declaration_code(Node* func_id, Formals* params, RetTyp
     } else {
         emitted_return_type = "i32";
     }
-    buffer.emit("define " + emitted_return_type + " @" + func_id->value + "(" + emitted_args + ")");
+    buffer.emit("define " + emitted_return_type + " @" + func_id->value + "(" + emitted_args + "){");
+}
+
+void Generator::close_function(RetType* type){
+    if(type->type == "void"){
+        buffer.emit("ret void");
+    } else {
+        buffer.emit("ret i32 0");
+    }
+    buffer.emit("}");
 }
 
 void Generator::merge_statement(Statement* statement1, Statement* statement2){
