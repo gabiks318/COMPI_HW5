@@ -68,7 +68,7 @@ Formals::Formals(FormalsList *formals_list) : Node(), formals_list() {
 // FuncDecl -> RetType ID LPAREN Formals RPAREN LBRACE OS Statements ES RBRACE
 FuncDecl::FuncDecl(RetType *return_type, Node *id, Formals *params) {
     if (DEBUG)
-        std::cout << "FuncDecl " << std::endl;
+        std::cout << "FuncDecl " + return_type->type + " " + id->value << std::endl;
     if (tables.symbol_exists(id->value)) {
         output::errorDef(yylineno, id->value);
         exit(0);
@@ -127,6 +127,7 @@ Statement::Statement(Exp *exp, bool is_return) : Node() {
         std::cout << "Statement Expression is_return:" << is_return << std::endl;
     SymbolTable *scope = tables.current_scope();
     string *return_type = scope->return_type;
+//    std::cout << "Return type " + *return_type + "\n";
 
     if (*return_type != "" && *return_type != exp->type) {
         if (*return_type != "int" || exp->type != "byte") {
@@ -155,7 +156,6 @@ Statement::Statement(Exp *exp, bool is_return) : Node() {
             delete new_exp;
         } else {
             code_gen.return_code(*return_type, reg);
-
         }
     } else {
 //        std::cout << "Exp type: " << exp->type + " " + exp->reg + " " + exp->value + "\n";
@@ -167,8 +167,17 @@ Statement::Statement(Exp *exp, bool is_return) : Node() {
             code_gen.return_value(new_exp->type, new_exp->reg);
             delete new_exp;
         } else {
-            string return_value = exp->value.empty() ? exp->reg : exp->value;
-            code_gen.return_value(exp->type, return_value);
+            if(!exp->value.empty()){
+                Symbol* symbol = tables.get_symbol(exp->value);
+                if(symbol){
+                    // Function call
+                    code_gen.return_value(exp->type, exp->reg);
+                } else {
+                    code_gen.return_value(exp->type, exp->value);
+                }
+            } else {
+                code_gen.return_value(exp->type, exp->reg);
+            }
         }
     }
 }
@@ -247,8 +256,11 @@ Statement::Statement(Node *id, Exp *exp) : Node(), cont_list(), break_list() {
         output::errorMismatch(yylineno);
         exit(0);
     }
+    if(symbol->offset >= 0 ){
+        code_gen.assign_code(exp, symbol->offset, symbol->type == "bool");
+    } else {
 
-    code_gen.assign_code(exp, symbol->offset, symbol->type == "bool");
+    }
 }
 
 // Statement -> Call SC
@@ -369,6 +381,7 @@ Exp::Exp(bool is_var, Node *terminal) : Node(), is_var(is_var) {
     Symbol *symbol = tables.get_symbol(terminal->value);
     value = terminal->value;
     type = symbol->type;
+    this->is_var = is_var;
     if (!is_var) {
         Call* func = dynamic_cast<Call *>(terminal);
         reg = func->reg;
@@ -475,7 +488,7 @@ ExpList::ExpList(Node *exp) : Node(), expressions() {
 }
 
 //// ExpList -> Exp, ExpList
-//ExpList::ExpList(Node *exp_list, Node *exp) : Node(), expressions() {
+//ExpList::ExpList(Node *exp_list, Node *exp)i : Node(), expressions() {
 //    if (DEBUG)
 //        std::cout << "ExpList -> Exp,ExpList" << "\n";
 //    expressions.push_back(dynamic_cast<Exp *>(exp));

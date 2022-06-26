@@ -72,7 +72,7 @@ FormalDecl:  Type ID                                                {$$ = new Fo
 Statements: Statement                                               {$$ = new Statements(dynamic_cast<Statement*>($1));}
             | Statements Statement                                  {$$ = new Statements(dynamic_cast<Statements*>($1), dynamic_cast<Statement*>($2));}
 
-Statement: LBRACE {tables.push_scope();} Statements {tables.pop_scope();} RBRACE    {$$ = new Statement(); dynamic_cast<Statement*>($$)->merge_lists_statements($3); delete $3;}
+Statement: LBRACE {tables.push_scope(false, *(tables.current_scope()->return_type));} Statements {tables.pop_scope();} RBRACE    {$$ = new Statement(); dynamic_cast<Statement*>($$)->merge_lists_statements($3); delete $3;}
            | Type ID SC                                             {$$ = new Statement(dynamic_cast<Type*>($1), $2);}
            | Type ID ASSIGN Exp SC                                  {$$ = new Statement(dynamic_cast<Type*>($1), $2, dynamic_cast<Exp*>($4));}
            | AUTO ID ASSIGN Exp SC                                  {$$ = new Statement(nullptr, $2, dynamic_cast<Exp*>($4));}
@@ -82,7 +82,7 @@ Statement: LBRACE {tables.push_scope();} Statements {tables.pop_scope();} RBRACE
            | RETURN Exp SC                                          {$$ = new Statement(dynamic_cast<Exp*>($2), true);}
            | IF LPAREN CheckBool RPAREN OS Label Statement          {$$ = new Statement(dynamic_cast<Statement*>($7), dynamic_cast<Exp*>($3), dynamic_cast<Label*>($6));tables.pop_scope();}
            | IF LPAREN CheckBool RPAREN OS Label Statement ELSE {code_gen.next_label_code(dynamic_cast<Exp*>($3));tables.pop_scope();} OS Label Statement  {$$ = new Statement(dynamic_cast<Statement*>($7), dynamic_cast<Statement*>($12), dynamic_cast<Exp*>($3), dynamic_cast<Label*>($6), dynamic_cast<Label*>($11)); tables.pop_scope();}
-           | WHILE LPAREN Label CheckBool RPAREN Label  {tables.push_scope(true);} Statement                 {$$ = new Statement("WHILE", dynamic_cast<Exp*>($4), dynamic_cast<Label*>($3), dynamic_cast<Label*>($6), dynamic_cast<Statement*>($8)); tables.pop_scope();}
+           | WHILE LPAREN Label CheckBool RPAREN Label  {tables.push_scope(true, *(tables.current_scope()->return_type));} Statement                 {$$ = new Statement("WHILE", dynamic_cast<Exp*>($4), dynamic_cast<Label*>($3), dynamic_cast<Label*>($6), dynamic_cast<Statement*>($8)); tables.pop_scope();}
            | BREAK SC                                               {$$ = new Statement($1);}
            | CONTINUE SC                                            {$$ = new Statement($1);}
 
@@ -97,7 +97,7 @@ Type: INT                                                           {$$ = new Ty
       | BYTE                                                        {$$ = new Type("byte");}
       | BOOL                                                        {$$ = new Type("bool");}
 
-Exp: LPAREN Exp RPAREN                                              {$$ = new Exp(dynamic_cast<Exp*>($2));}
+Exp: LPAREN Exp RPAREN                                              {$$ = code_gen.bool_exp(dynamic_cast<Exp*>($2));}
      | Exp ADD_SUB Exp                                              {$$ = new Exp($1, $3, $2->value, "int", "");}
      | Exp MULT_DIV Exp                                             {$$ = new Exp($1, $3, $2->value, "int", "");}
      | ID                                                           {$$ = new Exp(true, $1);}
@@ -113,7 +113,7 @@ Exp: LPAREN Exp RPAREN                                              {$$ = new Ex
      | Exp RELOP Exp                                                {$$ = new Exp($1, $3, $2->value, "relop", "");}
      | LPAREN Type RPAREN Exp                                       {$$ = new Exp($4, $2);}
 
-OS:                                                                 {tables.push_scope();}
+OS:                                                                 {tables.push_scope(false, *(tables.current_scope()->return_type));}
 CheckBool: Exp                                                      {check_bool($1);}
 Label:                                                              {$$ = new Label();}
 %%
