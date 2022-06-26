@@ -97,7 +97,7 @@ Type: INT                                                           {$$ = new Ty
       | BYTE                                                        {$$ = new Type("byte");}
       | BOOL                                                        {$$ = new Type("bool");}
 
-Exp: LPAREN Exp RPAREN                                              {$$ = code_gen.bool_exp(dynamic_cast<Exp*>($2));}
+Exp: LPAREN Exp RPAREN                                              {$$ = new Exp(dynamic_cast<Exp*>($2));}
      | Exp ADD_SUB Exp                                              {$$ = new Exp($1, $3, $2->value, "int", "");}
      | Exp MULT_DIV Exp                                             {$$ = new Exp($1, $3, $2->value, "int", "");}
      | ID                                                           {$$ = new Exp(true, $1);}

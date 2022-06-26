@@ -16,7 +16,6 @@ void main()
 	bar = true      or  divideBy0();
 	bar = false     and divideBy0();
 	bar = (5>4)     or  divideBy0();
-	printi(2);
 	bar = (4>5)     and divideBy0();
 	bar = (4==4)    or  divideBy0();
 	bar = (4!=4)    and divideBy0();

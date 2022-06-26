@@ -343,7 +343,8 @@ RetType::RetType(
 
 // ***************EXP******************
 // Exp -> LPAREN Exp RPAREN
-Exp::Exp(Exp *exp) : Node(exp->value), type(exp->type), reg(exp->reg) {
+Exp::Exp(Exp *exp) : Node(exp->value), type(exp->type), reg(exp->reg), false_list(exp->false_list),
+true_list(exp->true_list) , next_list(exp->next_list){
 }
 
 // Exp -> CONST(bool, num, byte, string)
